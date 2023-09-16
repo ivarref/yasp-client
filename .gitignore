@@ -5,3 +5,4 @@ target/
 .nrepl-port
 .idea/
 yasp-client/
+yasp-test/
