@@ -20,27 +20,30 @@
   {:status  200
    :headers {"content-type" "application/json"}
    :body    (json/generate-string (yasp/proxy!
-                                    {:allow-connect? (fn [host-and-port]
+                                    {:so-timeout 10
+                                     :allow-connect? (fn [host-and-port]
                                                        (= ["localhost" port]
                                                           host-and-port))}
                                     (json/decode-stream (InputStreamReader. ^InputStream (:body req) StandardCharsets/UTF_8) keyword)))})
 
 (t/deftest round-trip-test
-  (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
-              ^AutoCloseable ws (http/start-server (partial handler @echo-server) {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
-              client-server (yasp-client/start-client!
-                              {:endpoint    (str "http://localhost:" (netty/port ws)
-                                                 "/proxy")
-                               :remote-host "localhost"
-                               :remote-port @echo-server})]
-    (let [client-port @client-server]
-      (with-open [sock (Socket.)]
-        (.setSoTimeout sock 3000)
-        (.connect sock (InetSocketAddress. "localhost" ^Integer client-port))
-        (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
-                    out (PrintWriter. (BufferedOutputStream. (.getOutputStream sock)) true StandardCharsets/UTF_8)]
-          (.println out "Hello World!")
-          (t/is (= "Hello World!" (.readLine in)))
+  (let [cfg {:so-timeout 10}]
+    (with-open [echo-server (s/start-server! (atom {}) cfg s/echo-handler)
+                ^AutoCloseable ws (http/start-server (partial handler @echo-server) {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
+                client-server (yasp-client/start-client!
+                                (merge cfg
+                                       {:endpoint    (str "http://localhost:" (netty/port ws)
+                                                          "/proxy")
+                                        :remote-host "localhost"
+                                        :remote-port @echo-server}))]
+      (let [client-port @client-server]
+        (with-open [sock (Socket.)]
+          (.setSoTimeout sock 3000)
+          (.connect sock (InetSocketAddress. "localhost" ^Integer client-port))
+          (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
+                      out (PrintWriter. (BufferedOutputStream. (.getOutputStream sock)) true StandardCharsets/UTF_8)]
+            (.println out "Hello World!")
+            (t/is (= "Hello World!" (.readLine in)))
 
-          (.println out "Hallo, 你好世界")
-          (t/is (= "Hallo, 你好世界" (.readLine in))))))))
+            (.println out "Hallo, 你好世界")
+            (t/is (= "Hallo, 你好世界" (.readLine in)))))))))
