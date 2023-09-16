@@ -1,16 +1,15 @@
 (ns com.github.ivarref.yasp-client-test
-  (:require [clj-commons.pretty.repl]
+  (:require [aleph.http :as http]
+            [aleph.netty :as netty]
+            [cheshire.core :as json]
+            [clj-commons.pretty.repl]
             [clojure.test :as t]
             [com.github.ivarref.server :as s]
-            [aleph.http :as http]
-            [aleph.netty :as netty]
             [com.github.ivarref.yasp :as yasp]
-            [com.github.ivarref.yasp-client :as yasp-client]
-            [com.github.ivarref.yasp.impl :as impl]
-            [cheshire.core :as json])
-  (:import (java.io BufferedReader BufferedWriter InputStream InputStreamReader OutputStreamWriter)
+            [com.github.ivarref.yasp-client :as yasp-client])
+  (:import (java.io BufferedOutputStream BufferedReader InputStream InputStreamReader PrintWriter)
            (java.lang AutoCloseable)
-           (java.net InetAddress InetSocketAddress Socket SocketTimeoutException)
+           (java.net InetAddress InetSocketAddress Socket)
            (java.nio.charset StandardCharsets)))
 
 (set! *warn-on-reflection* true)
@@ -21,41 +20,27 @@
   {:status  200
    :headers {"content-type" "application/json"}
    :body    (json/generate-string (yasp/proxy!
-                                    {:allow-connect? (fn [_] true)}
+                                    {:allow-connect? (fn [host-and-port]
+                                                       (= ["localhost" port]
+                                                          host-and-port))}
                                     (json/decode-stream (InputStreamReader. ^InputStream (:body req) StandardCharsets/UTF_8) keyword)))})
 
 (t/deftest round-trip-test
   (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
               ^AutoCloseable ws (http/start-server (partial handler @echo-server) {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
               client-server (yasp-client/start-client!
-                              {:endpoint (str "http://localhost:" (netty/port ws)
-                                              "/proxy")
+                              {:endpoint    (str "http://localhost:" (netty/port ws)
+                                                 "/proxy")
                                :remote-host "localhost"
                                :remote-port @echo-server})]
     (let [client-port @client-server]
       (with-open [sock (Socket.)]
-        (.setSoTimeout sock 500)
+        (.setSoTimeout sock 3000)
         (.connect sock (InetSocketAddress. "localhost" ^Integer client-port))
         (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
-                    out (BufferedWriter. (OutputStreamWriter. (.getOutputStream sock) StandardCharsets/UTF_8))]
-          (.write out "Hello World!\n")
-          (.flush out)
-          (loop [start-time (System/currentTimeMillis)]
-            (let [spent-time (- (System/currentTimeMillis) start-time)
-                  line (try
-                         (.readLine in)
-                         (catch SocketTimeoutException _ste
-                           :timeout))]
-              (cond
-                (nil? line)
-                (impl/atomic-println "Round trip test got EOF")
+                    out (PrintWriter. (BufferedOutputStream. (.getOutputStream sock)) true StandardCharsets/UTF_8)]
+          (.println out "Hello World!")
+          (t/is (= "Hello World!" (.readLine in)))
 
-                (= line :timeout)
-                (do
-                  (impl/atomic-println "RTT: Timeout, giving up!"))
-
-                :else
-                (do
-                  (impl/atomic-println "Got line:" line)
-                  #_(recur)))))
-          (t/is (= 1 1)))))))
+          (.println out "Hallo, 你好世界")
+          (t/is (= "Hallo, 你好世界" (.readLine in))))))))
