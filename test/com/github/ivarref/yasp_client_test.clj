@@ -34,14 +34,15 @@
                                :remote-port @echo-server})]
     (let [client-port @client-server]
       (with-open [sock (Socket.)]
-        (.setSoTimeout sock 100)
+        (.setSoTimeout sock 500)
         (.connect sock (InetSocketAddress. "localhost" ^Integer client-port))
         (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
                     out (BufferedWriter. (OutputStreamWriter. (.getOutputStream sock) StandardCharsets/UTF_8))]
           (.write out "Hello World!\n")
           (.flush out)
-          (loop []
-            (let [line (try
+          (loop [start-time (System/currentTimeMillis)]
+            (let [spent-time (- (System/currentTimeMillis) start-time)
+                  line (try
                          (.readLine in)
                          (catch SocketTimeoutException _ste
                            :timeout))]
@@ -51,8 +52,7 @@
 
                 (= line :timeout)
                 (do
-                  #_(println "timeout!")
-                  (recur))
+                  (impl/atomic-println "RTT: Timeout, giving up!"))
 
                 :else
                 (do
