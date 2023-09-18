@@ -61,13 +61,15 @@
                         (do
                           (log/error "Client: Unhandled result" res)))))
               (do
-                (log/info "Client: Got EOF from local connection, exiting")))))
+                (log/info "Client: Got EOF from local connection")))))
         (log/debug "Client: Pump thread exiting")))))
 
 (defn start-client!
   "Document"
   ^AutoCloseable
-  [{:keys [endpoint remote-host remote-port] :as cfg}]
+  [{:keys [endpoint remote-host remote-port socket-timeout]
+    :or   {socket-timeout 100}
+    :as   cfg}]
   (assert (and (string? endpoint)
                (or
                  (str/starts-with? endpoint "http://")
@@ -75,5 +77,5 @@
           "Expected :endpoint to be present")
   (assert (string? remote-host) "Expected :remote-host to be present")
   (assert (some? remote-port) "Expected :remote-port to be present")
-  (server/start-server! proxy-state {} (fn [cb-args] (handler cfg cb-args))))
+  (server/start-server! proxy-state (select-keys cfg [:socket-timeout]) (fn [cb-args] (handler cfg cb-args))))
 
