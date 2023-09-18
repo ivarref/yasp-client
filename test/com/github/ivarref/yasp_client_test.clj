@@ -20,14 +20,15 @@
   {:status  200
    :headers {"content-type" "application/json"}
    :body    (json/generate-string (yasp/proxy!
-                                    {:so-timeout 10
-                                     :allow-connect? (fn [host-and-port]
-                                                       (= ["localhost" port]
-                                                          host-and-port))}
+                                    {:socket-timeout 10
+                                     :allow-connect? (fn [connect-request]
+                                                       (and
+                                                         (= "localhost" (:host connect-request))
+                                                         (= port (:port connect-request))))}
                                     (json/decode-stream (InputStreamReader. ^InputStream (:body req) StandardCharsets/UTF_8) keyword)))})
 
 (t/deftest round-trip-test
-  (let [cfg {:so-timeout 10}]
+  (let [cfg {:socket-timeout 10}]
     (with-open [echo-server (s/start-server! (atom {}) cfg s/echo-handler)
                 ^AutoCloseable ws (http/start-server (partial handler @echo-server) {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
                 client-server (yasp-client/start-client!

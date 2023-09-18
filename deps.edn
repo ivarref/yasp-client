@@ -1,7 +1,8 @@
 {:paths   ["src"]
- :deps    {org.clojure/clojure {:mvn/version "1.11.1"}
-           clj-http/clj-http   {:mvn/version "3.12.3"}
-           cheshire/cheshire   {:mvn/version "5.11.0"}}
+ :deps    {org.clojure/clojure       {:mvn/version "1.11.1"}
+           clj-http/clj-http         {:mvn/version "3.12.3"}
+           cheshire/cheshire         {:mvn/version "5.11.0"}
+           org.clojure/tools.logging {:mvn/version "1.2.4"}}
 
  :aliases {:test                                            ;; added by neil
            {:extra-paths ["test"]
