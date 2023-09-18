@@ -14,19 +14,28 @@
 
 (defn handler [{:keys [endpoint remote-host remote-port]}
                {:keys [^Socket sock closed?]}]
-  (let [res (client/post endpoint
-                         {:body               (json/generate-string {:op      "connect"
-                                                                     :payload (u/pr-str-safe {:host remote-host
-                                                                                              :port remote-port})})
-                          :content-type       :json
-                          :socket-timeout     5000          ;; in milliseconds
-                          :connection-timeout 3000          ;; in milliseconds
-                          :accept             :json
-                          :as                 :json})
-        {:keys [res session]} (:body res)]
-    (if (not= "ok-connect" res)
+  (log/info "Creating new session")
+  (let [{:keys [status] :as resp} (try
+                                    (client/post endpoint
+                                                 {:body               (json/generate-string {:op      "connect"
+                                                                                             :payload (u/pr-str-safe {:host remote-host
+                                                                                                                      :port remote-port})})
+                                                  :content-type       :json
+                                                  :socket-timeout     5000 ;; in milliseconds
+                                                  :connection-timeout 3000 ;; in milliseconds
+                                                  :accept             :json
+                                                  ;:throw-exceptions   false
+                                                  :as                 :json})
+                                    (catch Throwable t
+                                      (log/error t "Error during session creation")
+                                      (throw t)))
+        {:keys [res payload session]} (:body resp)]
+    (cond
+      (not= "ok-connect" res)
       (do
-        (log/error "Client: Could not connect, aborting. Response was:" res))
+        (log/error "Could not connect, aborting. Response was:" res payload))
+
+      :else
       (with-open [in (BufferedInputStream. (.getInputStream sock))
                   out (BufferedOutputStream. (.getOutputStream sock))]
         (loop []
@@ -47,10 +56,10 @@
                                          :as                 :json})
                       {:keys [res payload]} (:body resp)]
                   (cond (= "eof" res)
-                        (log/info "Client: Remote EOF, closing connection")
+                        (log/info "Remote EOF, closing connection")
 
                         (= "unknown-session" res)
-                        (log/debug "Client: Remote unknown session, closing connection")
+                        (log/debug "Remote unknown session, closing connection")
 
                         (= "ok-send" res)
                         (do
@@ -61,14 +70,15 @@
                         (do
                           (log/error "Client: Unhandled result" res)))))
               (do
-                (log/info "Client: Got EOF from local connection")))))
-        (log/debug "Client: Pump thread exiting")))))
+                (log/info "EOF from local connection")))))
+        (log/debug "Session ending")))))
 
-(defn start-client!
+(defn start-server!
   "Document"
   ^AutoCloseable
-  [{:keys [endpoint remote-host remote-port socket-timeout]
-    :or   {socket-timeout 100}
+  [{:keys [endpoint remote-host remote-port local-port local-port-file block?]
+    :or   {local-port-file ".yasp-port"
+           block?          true}
     :as   cfg}]
   (assert (and (string? endpoint)
                (or
@@ -77,5 +87,11 @@
           "Expected :endpoint to be present")
   (assert (string? remote-host) "Expected :remote-host to be present")
   (assert (some? remote-port) "Expected :remote-port to be present")
-  (server/start-server! proxy-state (select-keys cfg [:socket-timeout]) (fn [cb-args] (handler cfg cb-args))))
-
+  (let [port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
+                                   (fn [cb-args] (handler cfg cb-args)))]
+    (log/info "Yasp client running on port" @port)
+    (when local-port-file
+      (spit local-port-file (str @port)))
+    (if block?
+      @(promise)
+      port)))

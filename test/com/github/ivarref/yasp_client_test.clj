@@ -31,10 +31,10 @@
   (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
               ^AutoCloseable ws (http/start-server (partial web-handler @echo-server)
                                                    {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
-              client-server (yasp-client/start-client! {:endpoint    (str "http://localhost:" (netty/port ws)
-                                                                          "/proxy")
+              client-server (yasp-client/start-server! {:endpoint    (str "http://localhost:" (netty/port ws) "/proxy")
                                                         :remote-host "localhost"
-                                                        :remote-port @echo-server})]
+                                                        :remote-port @echo-server
+                                                        :block?      false})]
     (with-open [sock (Socket.)]
       (.setSoTimeout sock 1000)
       (.connect sock (InetSocketAddress. "localhost" ^Integer (deref client-server)))
