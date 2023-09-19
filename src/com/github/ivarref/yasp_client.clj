@@ -14,7 +14,7 @@
 
 (defn handler [{:keys [endpoint remote-host remote-port]}
                {:keys [^Socket sock closed?]}]
-  (log/info "Creating new session")
+  (log/info "Creating new connection")
   (let [{:keys [status] :as resp} (try
                                     (client/post endpoint
                                                  {:body               (json/generate-string {:op      "connect"
@@ -24,10 +24,9 @@
                                                   :socket-timeout     5000 ;; in milliseconds
                                                   :connection-timeout 3000 ;; in milliseconds
                                                   :accept             :json
-                                                  ;:throw-exceptions   false
                                                   :as                 :json})
                                     (catch Throwable t
-                                      (log/error t "Error during session creation")
+                                      (log/error t "Error during creating connection")
                                       (throw t)))
         {:keys [res payload session]} (:body resp)]
     (cond
