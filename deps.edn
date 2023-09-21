@@ -3,14 +3,13 @@
            clj-http/clj-http         {:mvn/version "3.12.3"}
            cheshire/cheshire         {:mvn/version "5.11.0"}
            org.clojure/tools.logging {:mvn/version "1.2.4"}
-           com.github.ivarref/yasp   {:local/root "/home/ire/code2/yasp"}
+           com.github.ivarref/yasp   {:git/sha "670bf9e855f5d78497010652d1737cdcd1d52376"}
            org.slf4j/slf4j-simple    {:mvn/version "2.0.9"}}
 
  :aliases {:test                                            ;; added by neil
            {:extra-paths ["test"]
             :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                           org.clj-commons/pretty               {:mvn/version "2.2"}
-                          com.github.ivarref/yasp              {:local/root "/home/ire/code2/yasp"}
                           com.github.ivarref/locksmith         {:mvn/version "0.1.6"}
                           aleph/aleph                          {:mvn/version "0.7.0-alpha1"}}
             :main-opts   ["-m" "cognitect.test-runner"]
