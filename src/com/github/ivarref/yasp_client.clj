@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [com.github.ivarref.server :as server]
+            [com.github.ivarref.yasp.tls :as tls]
             [com.github.ivarref.yasp.utils :as u])
   (:import (java.io BufferedInputStream BufferedOutputStream)
            (java.lang AutoCloseable)
@@ -12,8 +13,8 @@
 
 (defonce proxy-state (atom {}))
 
-(defn handler [{:keys [endpoint remote-host remote-port]}
-               {:keys [^Socket sock closed?]}]
+(defn web-handler [{:keys [endpoint remote-host remote-port]}
+                   {:keys [^Socket sock closed?]}]
   (log/info "Creating new connection")
   (let [{:keys [status] :as resp} (try
                                     (client/post endpoint
@@ -62,7 +63,7 @@
 
                         (= "ok-send" res)
                         (do
-                          (u/copy-bytes (u/base64-str->bytes payload) out)
+                          (u/write-bytes (u/base64-str->bytes payload) out)
                           (recur))
 
                         :else
@@ -72,12 +73,27 @@
                 (log/info "EOF from local connection")))))
         (log/debug "Session ending")))))
 
+(defn tls-handler [_cfg tls-context {:keys [^Socket sock]} dest-port]
+  (with-open [^Socket tls-sock (tls/socket tls-context "127.0.0.1" dest-port 3000)]
+    (let [fut (u/future (server/pump-socks tls-sock sock))]
+      (server/pump-socks sock tls-sock)
+      @fut)))
+
 (defn start-server!
-  "Document"
+  "Start a yasp client server (very concept).
+
+  This server will bind to 127.0.0.1 at `local-port`.
+  It will proxy incoming data over HTTP to `endpoint`, where
+  a yasp web handler should be running.
+
+  If `:tls-file` or `:tls-str` is given, the received data
+  will be encrypted before sent over HTTP."
   ^AutoCloseable
-  [{:keys [endpoint remote-host remote-port local-port local-port-file block?]
+  [{:keys [endpoint remote-host remote-port local-port tls-file tls-str local-port-file block?]
     :or   {local-port-file ".yasp-port"
-           block?          true}
+           block?          true
+           tls-file        :yasp/none
+           tls-str         :yasp/none}
     :as   cfg}]
   (assert (and (string? endpoint)
                (or
@@ -86,11 +102,23 @@
           "Expected :endpoint to be present")
   (assert (string? remote-host) "Expected :remote-host to be present")
   (assert (some? remote-port) "Expected :remote-port to be present")
-  (let [port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
-                                   (fn [cb-args] (handler cfg cb-args)))]
+  (let [tls-str (if (not= tls-file :yasp/none)
+                  (slurp tls-file)
+                  tls-str)
+        tls-context (when (not= tls-str :yasp/none)
+                      (tls/ssl-context-or-throw tls-str nil))
+        web-handler (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
+                                                               :local-port 0)
+                                                 (fn [cb-args] (web-handler cfg cb-args))))
+        port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
+                                   (fn [cb-args] (if (some? tls-context)
+                                                   (tls-handler cfg tls-context cb-args @@web-handler)
+                                                   (web-handler cfg cb-args))))]
     (log/info "Yasp client running on port" @port)
     (when local-port-file
       (spit local-port-file (str @port)))
     (if block?
-      @(promise)
+      (do
+        (log/info "Blocking...")
+        @(promise))
       port)))

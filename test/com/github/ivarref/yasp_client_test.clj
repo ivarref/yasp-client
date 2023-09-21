@@ -4,6 +4,7 @@
             [cheshire.core :as json]
             [clj-commons.pretty.repl]
             [clojure.test :as t]
+            [clojure.tools.logging :as log]
             [com.github.ivarref.server :as s]
             [com.github.ivarref.yasp :as yasp]
             [com.github.ivarref.yasp-client :as yasp-client])
@@ -21,7 +22,7 @@
     {:status  200
      :headers {"content-type" "application/json"}
      :body    (json/generate-string (yasp/proxy!
-                                      {:allow-connect? #{{:port server-port :host "localhost"}}}
+                                      {:allow-connect? (constantly true)}
                                       (json/decode-stream (InputStreamReader. ^InputStream body StandardCharsets/UTF_8) keyword)))}
     {:status  404
      :headers {"content-type" "text/plain"}
@@ -30,14 +31,15 @@
 (t/deftest round-trip-test
   (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
               ^AutoCloseable ws (http/start-server (partial web-handler @echo-server)
-                                                   {:socket-address (InetSocketAddress. (InetAddress/getLoopbackAddress) 0)})
-              client-server (yasp-client/start-server! {:endpoint    (str "http://localhost:" (netty/port ws) "/proxy")
-                                                        :remote-host "localhost"
-                                                        :remote-port @echo-server
-                                                        :block?      false})]
+                                                   {:socket-address (InetSocketAddress. "127.0.0.1" 0)})
+              yasp-client (yasp-client/start-server! {:endpoint    (str "http://127.0.0.1:" (netty/port ws) "/proxy")
+                                                      :remote-host "127.0.0.1"
+                                                      :remote-port @echo-server
+                                                      :block?      false})]
     (with-open [sock (Socket.)]
       (.setSoTimeout sock 1000)
-      (.connect sock (InetSocketAddress. "localhost" ^Integer (deref client-server)))
+      (log/info "connecting to port" @yasp-client)
+      (.connect sock (InetSocketAddress. "localhost" ^Integer (deref yasp-client)))
       (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
                   out (PrintWriter. (BufferedOutputStream. (.getOutputStream sock)) true StandardCharsets/UTF_8)]
         (.println out "Hello World!")
