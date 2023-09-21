@@ -4,13 +4,13 @@
             [cheshire.core :as json]
             [clj-commons.pretty.repl]
             [clojure.test :as t]
-            [clojure.tools.logging :as log]
             [com.github.ivarref.server :as s]
             [com.github.ivarref.yasp :as yasp]
-            [com.github.ivarref.yasp-client :as yasp-client])
+            [com.github.ivarref.yasp-client :as yasp-client]
+            [com.github.ivarref.yasp.utils :as u])
   (:import (java.io BufferedOutputStream BufferedReader InputStream InputStreamReader PrintWriter)
            (java.lang AutoCloseable)
-           (java.net InetAddress InetSocketAddress Socket)
+           (java.net InetSocketAddress Socket)
            (java.nio.charset StandardCharsets)))
 
 (set! *warn-on-reflection* true)
@@ -28,6 +28,8 @@
      :headers {"content-type" "text/plain"}
      :body    "Not found"}))
 
+(t/use-fixtures :each u/with-fut)
+
 (t/deftest round-trip-test
   (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
               ^AutoCloseable ws (http/start-server (partial web-handler @echo-server)
@@ -38,7 +40,6 @@
                                                       :block?      false})]
     (with-open [sock (Socket.)]
       (.setSoTimeout sock 1000)
-      (log/info "connecting to port" @yasp-client)
       (.connect sock (InetSocketAddress. "localhost" ^Integer (deref yasp-client)))
       (with-open [in (BufferedReader. (InputStreamReader. (.getInputStream sock) StandardCharsets/UTF_8))
                   out (PrintWriter. (BufferedOutputStream. (.getOutputStream sock)) true StandardCharsets/UTF_8)]

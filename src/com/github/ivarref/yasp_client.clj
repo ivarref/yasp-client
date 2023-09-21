@@ -107,18 +107,21 @@
                   tls-str)
         tls-context (when (not= tls-str :yasp/none)
                       (tls/ssl-context-or-throw tls-str nil))
-        web-handler (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
-                                                               :local-port 0)
-                                                 (fn [cb-args] (web-handler cfg cb-args))))
+        extra-forwarder (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
+                                                                   :local-port 0)
+                                                     (fn [cb-args] (web-handler cfg cb-args))))
         port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
                                    (fn [cb-args] (if (some? tls-context)
-                                                   (tls-handler cfg tls-context cb-args @@web-handler)
+                                                   (tls-handler cfg tls-context cb-args @@extra-forwarder)
                                                    (web-handler cfg cb-args))))]
-    (log/info "Yasp client running on port" @port)
+    ;(log/info "Yasp client running on port" @port)
+    ;(log/info "TLS context is" tls-context)
     (when local-port-file
       (spit local-port-file (str @port)))
     (if block?
       (do
         (log/info "Blocking...")
         @(promise))
-      port)))
+      (do
+        ;(log/info "Returning port" @port)
+        port))))
