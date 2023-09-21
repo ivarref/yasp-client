@@ -28,7 +28,7 @@
      :headers {"content-type" "text/plain"}
      :body    "Not found"}))
 
-(t/use-fixtures :each u/with-fut)
+(t/use-fixtures :each u/with-futures-check)
 
 (t/deftest round-trip-test
   (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)

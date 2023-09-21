@@ -18,20 +18,18 @@
 
 (clj-commons.pretty.repl/install-pretty-exceptions)
 
-(defn web-handler [tls-str new-state server-port {:keys [uri body]}]
+(defn web-handler [proxy-config {:keys [uri body]}]
   (if (= "/proxy" uri)
     {:status  200
      :headers {"content-type" "application/json"}
      :body    (json/generate-string (yasp/proxy!
-                                      {:allow-connect? #{{:port server-port :host "localhost"}}
-                                       :tls-str        tls-str
-                                       :state          new-state}
+                                      proxy-config
                                       (json/decode-stream (InputStreamReader. ^InputStream body StandardCharsets/UTF_8) keyword)))}
     {:status  404
      :headers {"content-type" "text/plain"}
      :body    "Not found"}))
 
-(t/use-fixtures :each u/with-fut)
+(t/use-fixtures :each u/with-futures-check)
 
 (defn gen-key-pair []
   (let [{:keys [ca-cert server-cert server-key client-cert client-key]} (lm/gen-certs {:duration-days 1})]
@@ -42,7 +40,9 @@
   (let [ks (gen-key-pair)
         yasp-state (atom {})]
     (with-open [echo-server (s/start-server! (atom {}) {} s/echo-handler)
-                ^AutoCloseable ws (http/start-server (partial web-handler (first ks) yasp-state @echo-server)
+                ^AutoCloseable ws (http/start-server (partial web-handler {:allow-connect? #{{:host "localhost" :port @echo-server}}
+                                                                           :state          yasp-state
+                                                                           :tls-str        (first ks)})
                                                      {:socket-address (InetSocketAddress. "127.0.0.1" 0)})
                 client (yasp-client/start-server! {:endpoint    (str "http://localhost:" (netty/port ws) "/proxy")
                                                    :remote-host "localhost"
