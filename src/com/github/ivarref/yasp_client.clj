@@ -36,42 +36,55 @@
         (log/error "Could not connect, aborting. Response was:" res payload))
 
       :else
-      (with-open [in (BufferedInputStream. (.getInputStream sock))
-                  out (BufferedOutputStream. (.getOutputStream sock))]
-        (loop []
-          (let [chunk (u/read-max-bytes in 1024)]
-            (if chunk
-              (do
-                (if (pos-int? (count chunk))
-                  (log/debug "Client: Send" (count chunk) "bytes over HTTP")
-                  (log/trace "Client: Send" (count chunk) "bytes over HTTP"))
-                (let [resp (client/post endpoint
-                                        {:body               (json/generate-string {:op      "send"
-                                                                                    :session session
-                                                                                    :payload (u/bytes->base64-str chunk)})
-                                         :content-type       :json
-                                         :socket-timeout     5000 ;; in milliseconds
-                                         :connection-timeout 3000 ;; in milliseconds
-                                         :accept             :json
-                                         :as                 :json})
-                      {:keys [res payload]} (:body resp)]
-                  (cond (= "eof" res)
-                        (log/info "Remote EOF, closing connection")
+      (try
+        (with-open [in (BufferedInputStream. (.getInputStream sock))
+                    out (BufferedOutputStream. (.getOutputStream sock))]
+          (loop []
+            (let [chunk (u/read-max-bytes in 1024)]
+              (if chunk
+                (do
+                  (if (pos-int? (count chunk))
+                    (log/debug "Client: Send" (count chunk) "bytes over HTTP")
+                    (log/trace "Client: Send" (count chunk) "bytes over HTTP"))
+                  (let [resp (client/post endpoint
+                                          {:body               (json/generate-string {:op      "send"
+                                                                                      :session session
+                                                                                      :payload (u/bytes->base64-str chunk)})
+                                           :content-type       :json
+                                           :socket-timeout     5000 ;; in milliseconds
+                                           :connection-timeout 3000 ;; in milliseconds
+                                           :accept             :json
+                                           :as                 :json})
+                        {:keys [res payload]} (:body resp)]
+                    (cond (= "eof" res)
+                          (log/info "Remote EOF, closing connection")
 
-                        (= "unknown-session" res)
-                        (log/debug "Remote unknown session, closing connection")
+                          (= "unknown-session" res)
+                          (log/debug "Remote unknown session, closing connection")
 
-                        (= "ok-send" res)
-                        (do
-                          (u/write-bytes (u/base64-str->bytes payload) out)
-                          (recur))
+                          (= "ok-send" res)
+                          (do
+                            (u/write-bytes (u/base64-str->bytes payload) out)
+                            (recur))
 
-                        :else
-                        (do
-                          (log/error "Client: Unhandled result" res)))))
-              (do
-                (log/info "EOF from local connection")))))
-        (log/debug "Session ending")))))
+                          :else
+                          (do
+                            (log/error "Client: Unhandled result" res)))))
+                (do
+                  (log/info "EOF from local connection")))))
+          (log/debug "Session ending"))
+        (finally
+          (log/debug "Closing remote connection")
+          (let [body (:body (client/post endpoint
+                                         {:body               (json/generate-string {:op      "close"
+                                                                                     :session session
+                                                                                     :payload ""})
+                                          :content-type       :json
+                                          :socket-timeout     5000 ;; in milliseconds
+                                          :connection-timeout 3000 ;; in milliseconds
+                                          :accept             :json
+                                          :as                 :json}))]
+            (log/debug "Close remote connection" (get body :res) (get body :payload))))))))
 
 (defn tls-handler [_cfg tls-context {:keys [^Socket sock]} dest-port]
   (with-open [^Socket tls-sock (tls/socket tls-context "127.0.0.1" dest-port 3000)]
