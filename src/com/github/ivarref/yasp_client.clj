@@ -7,7 +7,9 @@
             [clojure.tools.logging :as log]
             [com.github.ivarref.server :as server]
             [com.github.ivarref.yasp.tls :as tls]
-            [com.github.ivarref.yasp.utils :as u])
+            [com.github.ivarref.yasp.utils :as u]
+            [babashka.process :as p]
+            [babashka.process.pprint])
   (:import (java.io BufferedInputStream BufferedOutputStream)
            (java.lang AutoCloseable)
            (java.net Socket)))
@@ -93,6 +95,17 @@
       (server/pump-socks sock tls-sock)
       @fut)))
 
+(defn fetch-remote-file [cmd-args]
+  (let [{:keys [out exit]} @(p/process {:in  :inherit
+                                        :out :string
+                                        :err :inherit
+                                        :cmd cmd-args})]
+    (if (= 0 exit)
+      out
+      (do
+        (log/error "Error code was" exit "for cmd" cmd-args)
+        nil))))
+
 (defn start-server!
   "Start a yasp client server (very concept).
 
@@ -103,11 +116,12 @@
   If `:tls-file` or `:tls-str` is given, the received data
   will be encrypted before sent over HTTP."
   ^AutoCloseable
-  [{:keys [endpoint remote-host remote-port local-port tls-file tls-str local-port-file block?]
+  [{:keys [endpoint remote-host remote-port local-port tls-file tls-str tls-file-cmd local-port-file block?]
     :or   {local-port-file ".yasp-port"
            block?          true
            tls-file        :yasp/none
-           tls-str         :yasp/none}
+           tls-str         :yasp/none
+           tls-file-cmd :yasp/none}
     :as   cfg}]
   (assert (and (string? endpoint)
                (or
@@ -118,11 +132,14 @@
   (assert (some? remote-port) "Expected :remote-port to be present")
   (if (and (not= tls-file :yasp/none)
            (false? (.exists (io/file tls-file))))
-      (do (log/error (str ":tls-file '" tls-file "' does not exist, exiting"))
-          (log/error "Full path" (.getAbsolutePath (io/file tls-file)))
-          nil)
+    (do (log/error (str ":tls-file '" tls-file "' does not exist, exiting"))
+        (log/error "Full path" (.getAbsolutePath (io/file tls-file)))
+        nil)
     (let [tls-str (if (not= tls-file :yasp/none)
                     (slurp tls-file)
+                    tls-str)
+          tls-str (if (not= tls-file-cmd :yasp/none)
+                    (fetch-remote-file tls-file-cmd)
                     tls-str)
           tls-context (when (not= tls-str :yasp/none)
                         (tls/ssl-context-or-throw tls-str nil))
