@@ -3,7 +3,7 @@
            clj-http/clj-http         {:mvn/version "3.12.3"}
            cheshire/cheshire         {:mvn/version "5.12.0"}
            org.clojure/tools.logging {:mvn/version "1.2.4"}
-           com.github.ivarref/yasp   {:git/sha "670bf9e855f5d78497010652d1737cdcd1d52376"}
+           com.github.ivarref/yasp   {:git/sha "ce88eb88145ab2be2ba91d261c87704221b39134"}
            org.slf4j/slf4j-simple    {:mvn/version "2.0.9"}
            babashka/process          {:mvn/version "0.5.21"}}
 
