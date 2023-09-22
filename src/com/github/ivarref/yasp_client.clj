@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [println])
   (:require [cheshire.core :as json]
             [clj-http.client :as client]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [com.github.ivarref.server :as server]
@@ -40,7 +41,7 @@
         (with-open [in (BufferedInputStream. (.getInputStream sock))
                     out (BufferedOutputStream. (.getOutputStream sock))]
           (loop []
-            (let [chunk (u/read-max-bytes in 1024)]
+            (let [chunk (u/read-max-bytes in 64000)]
               (if chunk
                 (do
                   (if (pos-int? (count chunk))
@@ -115,26 +116,31 @@
           "Expected :endpoint to be present")
   (assert (string? remote-host) "Expected :remote-host to be present")
   (assert (some? remote-port) "Expected :remote-port to be present")
-  (let [tls-str (if (not= tls-file :yasp/none)
-                  (slurp tls-file)
-                  tls-str)
-        tls-context (when (not= tls-str :yasp/none)
-                      (tls/ssl-context-or-throw tls-str nil))
-        extra-forwarder (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
-                                                                   :local-port 0)
-                                                     (fn [cb-args] (web-handler cfg cb-args))))
-        port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
-                                   (fn [cb-args] (if (some? tls-context)
-                                                   (tls-handler cfg tls-context cb-args @@extra-forwarder)
-                                                   (web-handler cfg cb-args))))]
-    ;(log/info "Yasp client running on port" @port)
-    ;(log/info "TLS context is" tls-context)
-    (when local-port-file
-      (spit local-port-file (str @port)))
-    (if block?
-      (do
-        (log/info "Blocking...")
-        @(promise))
-      (do
-        ;(log/info "Returning port" @port)
-        port))))
+  (if (and (not= tls-file :yasp/none)
+           (false? (.exists (io/file tls-file))))
+      (do (log/error (str ":tls-file '" tls-file "' does not exist, exiting"))
+          (log/error "Full path" (.getAbsolutePath (io/file tls-file)))
+          nil)
+    (let [tls-str (if (not= tls-file :yasp/none)
+                    (slurp tls-file)
+                    tls-str)
+          tls-context (when (not= tls-str :yasp/none)
+                        (tls/ssl-context-or-throw tls-str nil))
+          extra-forwarder (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
+                                                                     :local-port 0)
+                                                       (fn [cb-args] (web-handler cfg cb-args))))
+          port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
+                                     (fn [cb-args] (if (some? tls-context)
+                                                     (tls-handler cfg tls-context cb-args @@extra-forwarder)
+                                                     (web-handler cfg cb-args))))]
+      ;(log/info "Yasp client running on port" @port)
+      ;(log/info "TLS context is" tls-context)
+      (when local-port-file
+        (spit local-port-file (str @port)))
+      (if block?
+        (do
+          (log/info "Blocking...")
+          @(promise))
+        (do
+          ;(log/info "Returning port" @port)
+          port)))))
