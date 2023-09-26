@@ -121,7 +121,7 @@
            block?          true
            tls-file        :yasp/none
            tls-str         :yasp/none
-           tls-file-cmd :yasp/none}
+           tls-file-cmd    :yasp/none}
     :as   cfg}]
   (assert (and (string? endpoint)
                (or
@@ -156,7 +156,9 @@
         (spit local-port-file (str @port)))
       (if block?
         (do
-          (log/info "Blocking...")
+          (log/info "Server running at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
+                                                                              "enabled"
+                                                                              "disabled"))
           @(promise))
         (do
           ;(log/info "Returning port" @port)
