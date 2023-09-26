@@ -156,10 +156,30 @@
         (spit local-port-file (str @port)))
       (if block?
         (do
-          (log/info "Server running at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
-                                                                              "enabled"
-                                                                              "disabled"))
-          @(promise))
+          (let [{:keys [body status]} (client/post endpoint
+                                                   {:body               (json/generate-string {:op "ping"})
+                                                    :content-type       :json
+                                                    :socket-timeout     5000 ;; in milliseconds
+                                                    :connection-timeout 3000 ;; in milliseconds
+                                                    :accept             :json
+                                                    :as                 :json
+                                                    :throw              false})]
+            (cond (not= 200 status)
+              (do
+                (log/error "Got HTTP status when trying to ping endpoint" endpoint)
+                (log/error "Remote server is probably misconfigured")
+                (log/error "HTTP body response was:" body))
+
+              (not= "pong" (get body :res))
+              (log/warn "janei")
+
+              :else
+              (do
+                (log/info "Remote server ready at" endpoint)
+                (log/info "Server running at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
+                                                                                    "enabled"
+                                                                                    "disabled"))
+                @(promise)))))
         (do
           ;(log/info "Returning port" @port)
           port)))))
