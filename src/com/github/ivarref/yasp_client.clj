@@ -155,31 +155,41 @@
       (when local-port-file
         (spit local-port-file (str @port)))
       (if block?
-        (let [{:keys [body status]} (client/post endpoint
-                                                 {:body               (json/generate-string {:op "ping"})
-                                                  :content-type       :json
-                                                  :socket-timeout     5000 ;; in milliseconds
-                                                  :connection-timeout 3000 ;; in milliseconds
-                                                  :accept             :json
-                                                  :as                 :json
-                                                  :throw              false})]
-          (cond (not= 200 status)
-                (do
-                  (log/error "Got HTTP status when trying to ping endpoint" endpoint)
-                  (log/error "Remote server is probably misconfigured")
-                  (log/error "HTTP body response was:" body))
+        (let [{:keys [body status throwable]} (try
+                                                (client/post endpoint
+                                                             {:body               (json/generate-string {:op "ping"})
+                                                              :content-type       :json
+                                                              :socket-timeout     5000 ;; in milliseconds
+                                                              :connection-timeout 3000 ;; in milliseconds
+                                                              :accept             :json
+                                                              :as                 :json
+                                                              :throw-exceptions   false})
+                                                (catch Throwable t
+                                                  {:throwable t}))]
+          (cond
+            (some? throwable)
+            (do
+              (log/error "Could not ping endpoint" (str "'" endpoint "'"))
+              (log/error "Error message:" (ex-message throwable))
+              (log/error "Is the remote server running?"))
 
-                (not= "pong" (get body :res))
-                (do
-                    (log/warn "Did not get proper pong reply. HTTP Body was:" body))
+            (not= 200 status)
+            (do
+              (log/error "Got HTTP status when trying to ping endpoint" endpoint)
+              (log/error "Remote server is probably misconfigured")
+              (log/error "HTTP body response was:" body))
 
-                :else
-                (do
-                  (log/info "Remote server ready at" endpoint)
-                  (log/info "Accepting connections at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
-                                                                                             "enabled"
-                                                                                             "disabled"))
-                  @(promise))))
+            (not= "pong" (get body :res))
+            (do
+              (log/warn "Did not get proper pong reply. HTTP Body was:" body))
+
+            :else
+            (do
+              (log/info "Remote server ready at" endpoint)
+              (log/info "Accepting connections at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
+                                                                                         "enabled"
+                                                                                         "disabled"))
+              @(promise))))
         (do
           ;(log/info "Returning port" @port)
           port)))))
