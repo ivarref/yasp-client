@@ -171,14 +171,14 @@
 
                 (not= "pong" (get body :res))
                 (do
-                  (log/warn "Did not get proper pong response. HTTP Body was:" body))
+                    (log/warn "Did not get proper pong reply. HTTP Body was:" body))
 
                 :else
                 (do
                   (log/info "Remote server ready at" endpoint)
-                  (log/info "Server running at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
-                                                                                      "enabled"
-                                                                                      "disabled"))
+                  (log/info "Accepting connections at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
+                                                                                             "enabled"
+                                                                                             "disabled"))
                   @(promise))))
         (do
           ;(log/info "Returning port" @port)
