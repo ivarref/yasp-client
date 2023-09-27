@@ -43,7 +43,7 @@
         (with-open [in (BufferedInputStream. (.getInputStream sock))
                     out (BufferedOutputStream. (.getOutputStream sock))]
           (loop []
-            (let [chunk (u/read-max-bytes in 64000)]
+            (let [chunk (u/read-max-bytes in 65536)]
               (if chunk
                 (do
                   (if (pos-int? (count chunk))
