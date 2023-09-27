@@ -47,7 +47,7 @@
               (if chunk
                 (do
                   (if (pos-int? (count chunk))
-                    (log/info "Send" (count chunk) "bytes over HTTP")
+                    (log/debug "Send" (count chunk) "bytes over HTTP")
                     (log/trace "Client: Send" (count chunk) "bytes over HTTP"))
                   (let [resp (client/post endpoint
                                           {:body               (json/generate-string {:op      "send"
@@ -69,7 +69,7 @@
                           (do
                             (let [recv-bytes (u/base64-str->bytes payload)]
                               (when (pos-int? (count recv-bytes))
-                                (log/info "Recv" (count recv-bytes) "bytes over HTTP"))
+                                (log/debug "Recv" (count recv-bytes) "bytes over HTTP"))
                               (u/write-bytes recv-bytes out))
                             (recur))
 
