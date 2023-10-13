@@ -127,7 +127,7 @@
   If `:tls-file` or `:tls-str` is given, the received data
   will be encrypted before sent over HTTP."
   ^AutoCloseable
-  [{:keys [endpoint remote-host remote-port local-port tls-file tls-str tls-file-cmd local-port-file block?]
+  [{:keys [endpoint remote-host remote-port exec-cmd local-port tls-file tls-str tls-file-cmd local-port-file block?]
     :or   {local-port-file ".yasp-port"
            block?          true
            tls-file        :yasp/none
@@ -217,6 +217,12 @@
                                                                                            "enabled"
                                                                                            "disabled"))
                 (reset! stats {})
+                (when (some? exec-cmd)
+                  (log/info "Executing" exec-cmd "...")
+                  @(p/process {:in  :inherit
+                               :out :inherit
+                               :err :inherit
+                               :cmd exec-cmd}))
                 @(promise))))
           (do
             ;(log/info "Returning port" @port)
