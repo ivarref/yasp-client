@@ -202,8 +202,8 @@
 
               (not= 200 status)
               (do
-                (log/error "Got HTTP status when trying to ping endpoint" endpoint)
-                (log/error "Remote server is probably misconfigured")
+                (log/error "Got HTTP status" status "when trying to ping endpoint" endpoint)
+                (log/error "Remote server is probably misconfigured/broken")
                 (log/error "HTTP body response was:" body))
 
               (not= "pong" (get body :res))
