@@ -146,25 +146,25 @@
     (do (log/error (str ":tls-file '" tls-file "' does not exist, exiting"))
         (log/error "Full path" (.getAbsolutePath (io/file tls-file)))
         nil)
-    (with-open [set-status-line! (sl/status-line-init)]
-      (let [tls-str (if (not= tls-file :yasp/none)
-                      (slurp tls-file)
-                      tls-str)
-            tls-str (if (not= tls-file-cmd :yasp/none)
-                      (fetch-remote-file tls-file-cmd)
-                      tls-str)
-            stats (atom {})
-            cfg (assoc cfg :stats stats)
-            tls-context (when (not= tls-str :yasp/none)
-                          (tls/ssl-context-or-throw tls-str nil))
-            extra-forwarder (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
-                                                                       :local-port 0)
-                                                         (fn [cb-args] (web-handler cfg cb-args))))
-            port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
-                                       (fn [cb-args] (if (some? tls-context)
-                                                       (tls-handler cfg tls-context cb-args @@extra-forwarder)
-                                                       (web-handler cfg cb-args))))]
-        (add-watch stats :watcher
+    #_(with-open [set-status-line! (sl/status-line-init)])
+    (let [tls-str (if (not= tls-file :yasp/none)
+                    (slurp tls-file)
+                    tls-str)
+          tls-str (if (not= tls-file-cmd :yasp/none)
+                    (fetch-remote-file tls-file-cmd)
+                    tls-str)
+          stats (atom {})
+          cfg (assoc cfg :stats stats)
+          tls-context (when (not= tls-str :yasp/none)
+                        (tls/ssl-context-or-throw tls-str nil))
+          extra-forwarder (delay (server/start-server! proxy-state (assoc (select-keys cfg [:socket-timeout])
+                                                                     :local-port 0)
+                                                       (fn [cb-args] (web-handler cfg cb-args))))
+          port (server/start-server! proxy-state (select-keys cfg [:local-port :socket-timeout])
+                                     (fn [cb-args] (if (some? tls-context)
+                                                     (tls-handler cfg tls-context cb-args @@extra-forwarder)
+                                                     (web-handler cfg cb-args))))]
+      #_(add-watch stats :watcher
                    (fn [_key _ref _old {:keys [web-handlers recv sent]
                                         :or   {web-handlers 0
                                                recv         0
@@ -174,56 +174,58 @@
                                                   "web handlers:" web-handlers
                                                   "sent:" sent
                                                   "recv" recv]))))
-        (future
-          (loop []
-            (Thread/sleep 1000)
-            (swap! stats update :tick (fnil inc 0))
-            (recur)))
-        (when local-port-file
-          (spit local-port-file (str @port)))
-        (if block?
-          (let [{:keys [body status throwable]} (try
-                                                  (client/post endpoint
-                                                               {:body               (json/generate-string {:op "ping"})
-                                                                :content-type       :json
-                                                                :socket-timeout     5000 ;; in milliseconds
-                                                                :connection-timeout 3000 ;; in milliseconds
-                                                                :accept             :json
-                                                                :as                 :json
-                                                                :throw-exceptions   false})
-                                                  (catch Throwable t
-                                                    {:throwable t}))]
-            (cond
-              (some? throwable)
-              (do
-                (log/error "Could not ping endpoint" (str "'" endpoint "'"))
-                (log/error "Error message:" (ex-message throwable))
-                (log/error "Is the remote server running?"))
+      (future
+        (loop []
+          (Thread/sleep 1000)
+          (swap! stats update :tick (fnil inc 0))
+          (recur)))
+      (when local-port-file
+        (spit local-port-file (str @port)))
+      (if block?
+        (let [{:keys [body status throwable]} (try
+                                                (client/post endpoint
+                                                             {:body               (json/generate-string {:op "ping"})
+                                                              :content-type       :json
+                                                              :socket-timeout     5000 ;; in milliseconds
+                                                              :connection-timeout 3000 ;; in milliseconds
+                                                              :accept             :json
+                                                              :as                 :json
+                                                              :throw-exceptions   false})
+                                                (catch Throwable t
+                                                  {:throwable t}))]
+          (cond
+            (some? throwable)
+            (do
+              (log/error "Could not ping endpoint" (str "'" endpoint "'"))
+              (log/error "Error message:" (ex-message throwable))
+              (log/error "Is the remote server running?"))
 
-              (not= 200 status)
-              (do
-                (log/error "Got HTTP status" status "when trying to ping endpoint" endpoint)
-                (log/error "Remote server is probably misconfigured/broken")
-                (log/error "HTTP body response was:" body))
+            (not= 200 status)
+            (do
+              (log/error "Got HTTP status" status "when trying to ping endpoint" endpoint)
+              (log/error "Remote server is probably misconfigured/broken")
+              (log/error "HTTP body response was:" body))
 
-              (not= "pong" (get body :res))
-              (do
-                (log/warn "Did not get proper pong reply. HTTP Body was:" body))
+            (not= "pong" (get body :res))
+            (do
+              (log/warn "Did not get proper pong reply. HTTP Body was:" body))
 
-              :else
-              (do
-                (log/info "Remote server ready at" endpoint)
-                (log/info "Accepting connections at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
-                                                                                           "enabled"
-                                                                                           "disabled"))
-                (reset! stats {})
-                (when (some? exec-cmd)
+            :else
+            (do
+              (log/info "Remote server ready at" endpoint)
+              (log/info "Accepting connections at" (str "127.0.0.1:" @port ",") "mTLS" (if (not= tls-str :yasp/none)
+                                                                                         "enabled"
+                                                                                         "disabled"))
+              (reset! stats {})
+              (if (some? exec-cmd)
+                (do
                   (log/info "Executing" exec-cmd "...")
-                  @(p/process {:in  :inherit
-                               :out :inherit
-                               :err :inherit
-                               :cmd exec-cmd}))
-                @(promise))))
-          (do
-            ;(log/info "Returning port" @port)
-            port))))))
+                  (let [{:keys [exit]} @(p/process {:in  :inherit
+                                                    :out :inherit
+                                                    :err :inherit
+                                                    :cmd exec-cmd})]
+                    (log/info "Exit code from" exec-cmd "was" exit)))
+                @(promise)))))
+        (do
+          ;(log/info "Returning port" @port)
+          port)))))
